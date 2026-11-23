@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { sanitizeReleaseSource } from './sanitize-release-source.mjs';
@@ -51,6 +52,17 @@ async function digest(file) {
   const sha256 = createHash('sha256');
   for await (const chunk of createReadStream(file)) sha256.update(chunk);
   return sha256.digest('hex');
+}
+
+async function moveReleaseFile(source, destination) {
+  for (const delay of [100, 250, 500, 1000, 2000]) {
+    try { await fs.rename(source, destination); return; }
+    catch (error) {
+      if (!['EBUSY', 'EPERM', 'EACCES'].includes(error.code)) throw error;
+      await wait(delay);
+    }
+  }
+  await fs.rename(source, destination);
 }
 
 async function download(url, expected) {
@@ -138,7 +150,7 @@ async function packVersion(version, repository) {
     await fs.writeFile(`${archive}.sha256`, checksum);
     for (const file of [setup, archive, `${archive}.sha256`]) {
       const destination = path.join(output, path.basename(file));
-      await fs.rename(file, destination);
+      await moveReleaseFile(file, destination);
       console.log(destination);
     }
   } finally {
@@ -146,7 +158,7 @@ async function packVersion(version, repository) {
     if (path.dirname(resolvedWork) !== resolvedOutput || !path.basename(resolvedWork).startsWith('.stage-')) {
       throw new Error('Release staging path is outside the dist directory.');
     }
-    await fs.rm(resolvedWork, { recursive: true, force: true });
+    await fs.rm(resolvedWork, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
   }
 }
 
