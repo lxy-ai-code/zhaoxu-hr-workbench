@@ -5,12 +5,15 @@ import { APP_ROOT, DEFAULT_CDP_PORT, DEFAULT_WEB_PORT, INSTALLED, WORKSPACE_ROOT
 import fs from 'node:fs/promises';
 import { ensureBossBrowser } from '../lib/boss-browser-runtime.mjs';
 import { manageWindowsService } from '../lib/windows-task-service.mjs';
+import { runWindowsUpdate } from '../lib/release-updates.mjs';
 
 const scriptFile = fileURLToPath(import.meta.url);
 const port = Number(process.env.HR_PORT || DEFAULT_WEB_PORT);
 if (!Number.isInteger(port) || port < 1024 || port > 65535 || port >= 9222 && port <= 9266 || [7788, 19222, 19223].includes(port)) throw new Error('HR_PORT 不可占用店铺控制台或浏览器调试端口。');
 try {
-  if (INSTALLED && process.argv.includes('--open-boss')) {
+  if (INSTALLED && process.argv[2] === '--run-update') {
+    process.exitCode = await runWindowsUpdate(root, process.argv[3]);
+  } else if (INSTALLED && process.argv.includes('--open-boss')) {
     await fs.mkdir(path.join(root, 'boss-chrome'), { recursive: true });
     const result = await ensureBossBrowser({ root, cdpPort: DEFAULT_CDP_PORT });
     if (result.status === 'unavailable') throw new Error(result.message);

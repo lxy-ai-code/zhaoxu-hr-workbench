@@ -11,6 +11,15 @@ param(
 $versionPattern = '(?:0|[1-9][0-9]{0,8})(?:\.(?:0|[1-9][0-9]{0,8})){2}'
 $repoPattern = '^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}/[a-zA-Z0-9_.-]{1,100}$'
 
+function Get-ReleaseHash([string]$File) {
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [IO.File]::OpenRead($File)
+        try { return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+        finally { $stream.Dispose() }
+    } finally { $hasher.Dispose() }
+}
+
 function Save-PublicGitHubFile($Client, [uri]$Uri, [string]$Destination, [long]$Limit, [int]$Seconds, [switch]$Asset) {
     $hosts = if ($Asset) { @('github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com') } else { @('api.github.com') }
     $deadline = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($Seconds))
@@ -195,7 +204,7 @@ try {
     if ((Get-Item -LiteralPath $zipPath).Length -ne $asset[0].size -or (Get-Item -LiteralPath $checksumPath).Length -ne $checksum[0].size) {
         throw 'The downloaded release files have unexpected sizes.'
     }
-    if ($checksum[0].digest -and $checksum[0].digest -ne "sha256:$((Get-FileHash -LiteralPath $checksumPath -Algorithm SHA256).Hash)") {
+    if ($checksum[0].digest -and $checksum[0].digest -ne "sha256:$(Get-ReleaseHash $checksumPath)") {
         throw 'The downloaded checksum file did not match GitHub release metadata.'
     }
     $hashLine = (Get-Content -LiteralPath $checksumPath -Raw -Encoding UTF8).Trim()
@@ -203,7 +212,7 @@ try {
         throw 'The downloaded release checksum is invalid.'
     }
     $expectedDigest = $Matches[1]
-    $digest = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    $digest = Get-ReleaseHash $zipPath
     if ($digest -ne $expectedDigest -or ($asset[0].digest -and $asset[0].digest -ne "sha256:$digest")) {
         throw 'The Windows package did not match the published SHA-256 checksum.'
     }

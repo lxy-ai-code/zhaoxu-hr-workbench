@@ -1,6 +1,6 @@
 {
   "name": "zhaoxu-hr-workbench",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "本地招聘工作台：BOSS 直聘、飞书多维表与面试协作",

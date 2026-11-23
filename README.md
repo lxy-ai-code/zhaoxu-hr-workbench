@@ -6,7 +6,7 @@
 
 打开工作台会检查公开的 GitHub Release。有新版时，点击页面中的 **立即更新**，安装完成后页面会重新加载。开始菜单中的 **Zhaoxu HR Update** 也能安装新版。候选人资料、简历和配置保存在 `%LOCALAPPDATA%\ZhaoxuHR\data`，升级前会备份工作区 JSON。
 
-已经安装 1.0.0 的用户需要从 Releases 下载新版 Setup 覆盖升级一次。此后可以直接从页面更新，无需安装 GitHub CLI 或登录 GitHub。
+已经安装 1.0.0 或 1.0.1 的用户需要从 Releases 下载 1.0.2 或以上的 Setup 覆盖升级一次。此后可以直接从页面更新，无需安装 GitHub CLI 或登录 GitHub。
 
 此版本使用本机端口 `18788`。关闭浏览器页面后后台仍会运行。可以从开始菜单选择 **Zhaoxu HR Stop** 结束后台服务。Windows 重新登录后，从开始菜单打开工作台即可启动服务。
 
