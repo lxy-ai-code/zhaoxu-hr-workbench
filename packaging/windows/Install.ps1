@@ -1,6 +1,7 @@
 param(
     [string]$InstallRoot,
     [switch]$NoLaunch,
+    [switch]$NoBrowser,
     [switch]$NoShortcut
 )
 
@@ -25,7 +26,7 @@ function Read-Package([string]$App) {
 
 function Assert-WorkbenchIdle {
     $workspace = Invoke-RestMethod -Uri "$WorkbenchUrl/api/workspace" -TimeoutSec 12
-    foreach ($status in @($workspace.inboxStatus, $workspace.liveCaptureStatus, $workspace.copilotStatus, $workspace.interviewReportStatus)) {
+    foreach ($status in @($workspace.inboxStatus, $workspace.liveCaptureStatus, $workspace.copilotStatus, $workspace.interviewReportStatus, $workspace.interviewNotificationStatus)) {
         if ($status.running -or $status.status -in @('running', 'capturing', 'analyzing')) {
             throw 'Background work is in progress. Retry the update after it finishes.'
         }
@@ -187,4 +188,4 @@ if (!$NoShortcut) {
     New-WorkbenchShortcut ([Environment]::GetFolderPath('DesktopDirectory')) 'Zhaoxu HR' (Join-Path $root 'Start.cmd')
 }
 Write-Host "Zhaoxu HR $($incoming.version) installed in $root."
-if (!$NoLaunch) { Start-Process $WorkbenchUrl }
+if (!$NoLaunch -and !$NoBrowser) { Start-Process $WorkbenchUrl }

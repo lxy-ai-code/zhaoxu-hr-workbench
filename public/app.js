@@ -8,6 +8,7 @@ import { inCandidatePool, isBossOffline } from './talent-source-model.js';
 import {eligibleInterviewApplications,defaultReminderMinutes,interviewSchedulePayload,interviewCalendarState,refreshExistingInterviewStatus} from './interview-scheduling.js';
 import {documentGenerationStatus,latestDocumentsByCandidate} from './document-status.js';
 import {renderScheduleNotificationOptions,renderDefaultInterviewNotificationSettings,automationRecipientSettingsPayload,createRecipientDirectoryController} from './interview-recipients.js';
+import { createWorkbenchUpdate } from './workbench-update.js';
 
 const icons = {
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
@@ -88,6 +89,14 @@ async function api(url,method='GET',body) {
   if(!response.ok || result.error) {const error=new Error(result.message || (typeof result.error==='string'?result.error:'操作未完成，请查看执行记录。'));error.payload=result;throw error;}
   return result;
 }
+const editedForms = new WeakSet();
+for (const event of ['input', 'change']) {
+  document.addEventListener(event, ({ target }) => { if (target.form) editedForms.add(target.form); }, true);
+}
+const workbenchUpdate = createWorkbenchUpdate({
+  request: api,
+  canReload: () => !state.busy && ![...document.forms].some(form => editedForms.has(form)),
+});
 async function loadWorkspace() { const result=await api('/api/workspace'); state.data=result.workspace || result; for(const key of ['requirements','candidates','applications','interviews','documents','activities','automations','conversations','messages','prompts','analyses','resumes','bossJobs','sourcingCandidates']) state.data[key] ||= []; state.data.settings ||= {}; state.data.schema ||= {tables:[]}; render(); }
 async function run(button,fn) {
   const original=button?.innerHTML;
@@ -105,6 +114,9 @@ function render() {
   const active=document.activeElement;const focused=active?.id;const cursor=active?.selectionStart;
   const local=state.data.connections?.storage?.mode!=='feishu';
   app.innerHTML=`<div class="app-shell"><aside class="sidebar ${state.mobileOpen?'open':''}"><div class="brand"><span class="brand-mark">序</span><div><div class="brand-name">招序 <span style="font-weight:400;opacity:.65">HR</span></div><small>RECRUITING WORKSPACE</small></div></div><div class="nav-label">工作空间</div><nav>${navs.slice(0,8).map(([name,symbol])=>`<button class="nav-item ${state.view===name?'active':''}" data-action="navigate" data-view="${name}" aria-current="${state.view===name?'page':'false'}">${icon(symbol)}<span>${viewNames[name]}</span>${name==='candidates'&&poolCandidates().length?`<span class="nav-count">${poolCandidates().length}</span>`:''}</button>`).join('')}<div class="nav-separator"></div><div class="nav-label">工作流与数据</div>${navs.slice(8).map(([name,symbol])=>`<button class="nav-item ${state.view===name?'active':''}" data-action="navigate" data-view="${name}" aria-current="${state.view===name?'page':'false'}">${icon(symbol)}<span>${viewNames[name]}</span></button>`).join('')}</nav><div class="sidebar-bottom"><div class="local-card"><div class="connection-title"><i class="dot ${local?'orange':'green'}"></i>&nbsp; ${isBossOffline(state.data)?'离线整理已有数据':local?'本地工作空间':'飞书多维表已连接'}</div><div class="small">${isBossOffline(state.data)?state.data.settings?.feishuConnection?state.data.connections?.feishu?.status==='connected'?'飞书应用认证已通过 · BOSS 仍离线':'飞书应用已配置 · 等待认证':state.data.settings?.baseToken||state.data.settings?.baseUrl?'飞书配置已保存 · 本轮未检测连接':'数据保存在当前电脑 · 本轮未检测外部连接':local?'数据保存在当前电脑<br>连接飞书后可同步共享':'本地缓存与飞书业务表协同'}</div></div><div class="sidebar-user"><div class="user-icon">HR</div><div><strong>招聘工作台</strong><small>第一版 · 本地运行</small></div><button class="icon-button" style="margin-left:auto" data-action="navigate" data-view="settings" aria-label="连接设置">${icon('link')}</button></div></div></aside><main class="main"><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="mobile-menu" aria-label="打开菜单">${icon('menu')}</button><span>工作空间</span><span>/</span><strong>${viewNames[state.view]}</strong></div><div class="topbar-right"><span class="status-line"><i class="dot ${!isBossOffline(state.data)&&state.data.connections?.boss?.status==='connected'?'green':''}"></i>BOSS ${isBossOffline(state.data)?'离线整理':state.data.connections?.boss?.status==='connected'?'已连接':'待检测'}</span><time>${new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'long',day:'numeric',weekday:'short'}).format(new Date())}</time><button class="icon-button" data-action="refresh" title="刷新工作台" aria-label="刷新工作台">${icon('refresh')}</button></div></header><div class="content">${({overview:renderOverview,requirements:advanced.renderRequirements,'job-mappings':advanced.renderJobMappings,prompts:advanced.renderPrompts,candidates:renderCandidates,sourcing:sourcingCandidates.renderSourcing,conversations:renderConversations,interviews:renderInterviews,documents:renderDocuments,automations:renderAutomations,settings:renderSettings}[state.view])()}</div></main></div>`;
+  const updateSlot = document.createElement('div');
+  app.querySelector('.content').prepend(updateSlot);
+  workbenchUpdate.mount(updateSlot);
   enhanceView();
   advanced.enhanceView();
   if(focused) {const next=document.getElementById(focused);if(next){next.focus();if(cursor!=null&&typeof next.setSelectionRange==='function')try{next.setSelectionRange(cursor,cursor);}catch{}}}
@@ -347,4 +359,6 @@ document.addEventListener('submit',event=>{
   else if(form.id==='conversation-followup-form')run(submitter,async()=>{values.followUpAt=values.followUpAt?new Date(`${values.followUpAt}:00+08:00`).toISOString():'';await api(`/api/conversations/${encodeURIComponent(form.dataset.id)}`,'PATCH',values);state.selectedConversationId=form.dataset.id;await loadWorkspace();notify('沟通进度与跟进记录已保存，没有向 BOSS 发送消息。');});
 });
 window.addEventListener('hashchange',()=>{const view=location.hash.slice(1);if(view!==state.view){closeOverlay();state.view=viewNames[view]?view:'overview';render();}});
-loadWorkspace().catch(error=>{app.innerHTML=`<div class="error-page"><span class="brand-mark" style="margin:0 auto 20px">序</span><h1>工作台暂时无法连接</h1><p>${escape(error.message)}</p><button id="retry-load" class="btn primary">重新连接</button></div>`;document.getElementById('retry-load').addEventListener('click',()=>location.reload());});
+loadWorkspace()
+  .then(() => { void workbenchUpdate.check(); })
+  .catch(error=>{app.innerHTML=`<div class="error-page"><span class="brand-mark" style="margin:0 auto 20px">序</span><h1>工作台暂时无法连接</h1><p>${escape(error.message)}</p><button id="retry-load" class="btn primary">重新连接</button></div>`;document.getElementById('retry-load').addEventListener('click',()=>location.reload());});

@@ -48,6 +48,7 @@ import { chooseInterviewScoreSummary } from './lib/interview-score-summary.mjs';
 import { candidateBasicInfo } from './lib/candidate-basic-info.mjs';
 import { candidateCareerProfile } from './lib/candidate-career-profile.mjs';
 import { ensureCandidateMaster, candidateProfileView, updateCandidateProfile, mergeBossCandidateFields } from './lib/candidate-master.mjs';
+import { createReleaseUpdater } from './lib/release-updates.mjs';
 
 const PUBLIC = path.join(APP_ROOT, 'public');
 const { version } = JSON.parse(await fs.readFile(path.join(APP_ROOT, 'package.json'), 'utf8'));
@@ -117,6 +118,7 @@ export async function createWorkbench({ store = new Store(), boss = bossAdapter,
   if (migrateLegacyBossProfileSalary(store.read()).changed) await store.mutate(state => migrateLegacyBossProfileSalary(state));
   if (ensureReplyPriorityCacheKeys(store.read())) await store.mutate(state => ensureReplyPriorityCacheKeys(state));
   const busy = new Set();
+  const updater = createReleaseUpdater({ appRoot: APP_ROOT, home: ROOT, version, installed: INSTALLED && process.platform === 'win32' });
   const notificationClock=notificationOptions.clock||Date.now;
   const notificationStamp=()=>new Date(notificationClock()).toISOString();
   const feishuOptions = (settings = store.read().settings) => settings.feishuConnection ? { connection: normalizeLarkConnection(settings.feishuConnection) } : {};
@@ -483,6 +485,18 @@ export async function createWorkbench({ store = new Store(), boss = bossAdapter,
       if (route.startsWith('/api/')) {
         const match = pattern => route.match(pattern);
         if (req.method === 'GET' && route === '/api/health') return json(res, 200, { ok: true, service: '招序 HR', version, ...(INSTALLED ? { installId: process.env.HR_INSTALL_ID || '' } : {}) });
+        if (req.method === 'GET' && route === '/api/updates') {
+          return json(res, 200, await updater.check({ statusOnly: url.searchParams.get('status') === '1' }));
+        }
+        if (req.method === 'POST' && route === '/api/updates') {
+          const jsonRequest = req.headers['content-type']?.split(';', 1)[0].trim().toLowerCase() === 'application/json';
+          if (req.headers.origin !== `http://${host}` || !jsonRequest) {
+            return json(res, 403, { error: 'invalid_update_request', message: '请在工作台内启动更新。' });
+          }
+          const input = await body(req, 1024);
+          if (!input || Object.keys(input).some(key => key !== 'version')) throw badRequest('更新请求无效。');
+          return json(res, 202, await updater.install(input.version));
+        }
         if (req.method === 'GET' && route === '/api/feishu/recipients') {
           const connection=store.read().settings.feishuConnection;
           if(!connection)return json(res,200,{status:'unavailable',source:'feishu_directory',recipients:[],message:'请先连接云咩咩飞书应用，再搜索通讯录。'});
