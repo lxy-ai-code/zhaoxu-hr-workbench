@@ -1,0 +1,10 @@
+data/
+runtime/
+.env
+.env.local
+node_modules/
+*.log
+dist/
+.test-tmp/
+.tmp-suite-runtime/
+.chrome-cdp*/
